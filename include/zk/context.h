@@ -411,7 +411,6 @@ class context : public std::enable_shared_from_this<context> {
           h_(std::forward<DeducedHandler>(h)) {}
 
     void operator()(boost::system::error_code ec) {
-      std::cerr << "Completing\n";
       c_.op_running_ = false;
       c_.do_operations();
 
@@ -633,7 +632,6 @@ class context : public std::enable_shared_from_this<context> {
           return;
         }
         const auto& ping = ping_request::make();
-        std::cerr << "sending pings\n";
         boost::asio::async_write(
             self->sock_, boost::asio::buffer(ping.b.data(), ping.b.size()),
             self->strand_.wrap([self](auto ec, auto) {
