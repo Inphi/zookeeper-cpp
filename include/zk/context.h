@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <boost/algorithm/string.hpp>
 #include <boost/asio/async_result.hpp>
 #include <boost/asio/basic_waitable_timer.hpp>
@@ -9,19 +10,24 @@
 #include <boost/asio/strand.hpp>
 #include <boost/optional.hpp>
 #include <boost/utility/string_ref.hpp>
-#include <atomic>
 #include <chrono>
 #include <memory>
 #include <queue>
 #include <vector>
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+
+#include "detail/log.h"
 #include "error.h"
 #include "io.h"
 #include "owned_buffer.h"
 #include "proto.h"
 #include "result.h"
-#include "detail/log.h"
 
-#define ZK_LOGGING 1 // debug
+//#define ZK_LOGGING 1  // debug
 
 #ifdef ZK_LOGGING
 #include <iostream>
@@ -38,7 +44,7 @@ static bool path_valid(boost::string_ref path) {
   if (path[0] != '/') return false;
   if (path.size() > 1 && path.back() == '/') return false;
   return true;
-} 
+}
 
 class context : public std::enable_shared_from_this<context> {
   using clock = std::chrono::steady_clock;
@@ -143,7 +149,8 @@ class context : public std::enable_shared_from_this<context> {
 
   std::string resolve_path(boost::string_ref path) {
     if (chroot_) {
-      if (path == "/") return *chroot_;
+      if (path == "/")
+        return *chroot_;
       else {
         if (!path_valid(path)) throw std::invalid_argument("invalid path");
         return *chroot_ + path.to_string();
@@ -155,8 +162,7 @@ class context : public std::enable_shared_from_this<context> {
 
   template <class ReadHandler>
   auto create(boost::string_ref path, std::vector<char> data,
-              std::vector<acl> acls, create_mode mode,
-              ReadHandler&& handler) {
+              std::vector<acl> acls, create_mode mode, ReadHandler&& handler) {
     using result_data = std::string;
 
     create_request req;
@@ -205,7 +211,8 @@ class context : public std::enable_shared_from_this<context> {
     };
 
     return dispatch<exists_request, exists_response>(
-        op_code::exists, req, std::move(transform), std::forward<ReadHandler>(handler));
+        op_code::exists, req, std::move(transform),
+        std::forward<ReadHandler>(handler));
   }
 
   template <class ReadHandler>
@@ -301,9 +308,10 @@ class context : public std::enable_shared_from_this<context> {
                                          std::forward<ReadHandler>(handler));
     }
 
-    auto transform = [](result<get_acl_response>&& r) -> auto {
+    auto transform = [](result<get_acl_response> && r) -> auto {
       if (r.is_ok()) {
-        return result<result_data>::make_ok(std::move(r.ok().acls), std::move(r.ok().st));
+        return result<result_data>::make_ok(std::move(r.ok().acls),
+                                            std::move(r.ok().st));
       } else {
         return result<result_data>::make_error(r.err());
       }
@@ -329,9 +337,10 @@ class context : public std::enable_shared_from_this<context> {
                                          std::forward<ReadHandler>(handler));
     }
 
-    auto transform = [](result<get_acl_response>&& r) -> auto {
+    auto transform = [](result<get_acl_response> && r) -> auto {
       if (r.is_ok()) {
-        return result<result_data>::make_ok(std::move(r.ok().acls), std::move(r.ok().st));
+        return result<result_data>::make_ok(std::move(r.ok().acls),
+                                            std::move(r.ok().st));
       } else {
         return result<result_data>::make_error(r.err());
       }
@@ -370,8 +379,8 @@ class context : public std::enable_shared_from_this<context> {
 
  private:
   context(boost::asio::io_service& ios, std::string quorum,
-          std::chrono::milliseconds timeout) :
-        timeout_{timeout},
+          std::chrono::milliseconds timeout)
+      : timeout_{timeout},
         strand_{ios},
         sock_{ios},
         resolver_{sock_.get_io_service()},
@@ -385,7 +394,8 @@ class context : public std::enable_shared_from_this<context> {
   void init() { start_connection(); }
 
   std::int32_t xid() {
-    return static_cast<std::int32_t>(xid_.fetch_add(1, std::memory_order_relaxed));
+    return static_cast<std::int32_t>(
+        xid_.fetch_add(1, std::memory_order_relaxed));
   }
 
   template <typename Work>
@@ -470,7 +480,8 @@ class context : public std::enable_shared_from_this<context> {
                 Handler&& handler) {
     using result_type = result<Response>;
     using transform_result = decltype(transform(std::declval<result_type>()));
-    boost::asio::async_completion<Handler, void(transform_result)> init{handler};
+    boost::asio::async_completion<Handler, void(transform_result)> init{
+        handler};
 
     auto b = std::make_shared<owned_buffer>();
     char* begin = b->data() + b->size();
@@ -483,8 +494,8 @@ class context : public std::enable_shared_from_this<context> {
     hdr.opcode = static_cast<int32_t>(oc);
     request_payload<Request> payload{hdr, std::forward<Request>(r)};
     payload.serialize(*b);
-    len = b->data() + b->size() - begin - 4;
-    const auto encoded_len = htobe32(len);
+    len = static_cast<int32_t>(b->data() + b->size() - begin - 4);
+    const auto encoded_len = boost::endian::native_to_big(len);
     std::copy_n(reinterpret_cast<const char*>(&encoded_len), 4, begin);
 
     auto rb = std::make_shared<std::string>();
@@ -500,7 +511,7 @@ class context : public std::enable_shared_from_this<context> {
                               init.completion_handler},
             sock_, oc, std::move(b), std::move(rb)};
 
-   defer([zop = std::move(zop)](auto self) mutable {
+    defer([zop = std::move(zop)](auto self) mutable {
       if (!self->connected() || self->op_running_) {
         self->q_.emplace([zop = std::move(zop)]() mutable {
           zop(boost::system::error_code{});
@@ -534,7 +545,7 @@ class context : public std::enable_shared_from_this<context> {
       self->resolver_.async_resolve(ep,
                                     self->strand_.wrap([self](auto ec, auto i) {
                                       if (ec) {
-                                        trace_error("resolve", ec);
+                                        detail::trace_error("resolve", ec);
                                         self->start_connection();
                                         return;
                                       }
@@ -549,7 +560,7 @@ class context : public std::enable_shared_from_this<context> {
     boost::asio::async_connect(
         sock_, i, strand_.wrap([self = shared_from_this()](auto ec, auto i) {
           if (ec) {
-            trace_error("connect", ec);
+            detail::trace_error("connect", ec);
             if (i == boost::asio::ip::tcp::resolver::iterator()) {
               // TODO: wait a bit; then restart connection to a different serv
               self->start_connection();
@@ -586,7 +597,7 @@ class context : public std::enable_shared_from_this<context> {
         sock_, boost::asio::buffer(buf->data(), buf->size()),
         strand_.wrap([self = shared_from_this(), buf](auto ec, auto) {
           if (ec) {
-            trace_error("connect request", ec);
+            detail::trace_error("connect request", ec);
             // reconnect | abort (in case of auth failures)
             return;
           }
@@ -594,7 +605,7 @@ class context : public std::enable_shared_from_this<context> {
           auto rb = std::make_shared<std::string>();
           zk_read(self->sock_, rb, self->strand_.wrap([self, rb](auto ec) {
             if (ec) {
-              trace_error("connect response", ec);
+              detail::trace_error("connect response", ec);
               return;
             }
             auto resp = connect_response::deserialize(
@@ -636,12 +647,12 @@ class context : public std::enable_shared_from_this<context> {
             self->sock_, boost::asio::buffer(ping.b.data(), ping.b.size()),
             self->strand_.wrap([self](auto ec, auto) {
               if (ec) {
-                trace_error("ping", ec);
+                detail::trace_error("ping", ec);
                 self->reconnect();
                 return;
               }
-              // TODO: async_read ping acknowledgement; handle failures accordingly
-              // Also, use zk_op to do this; to synchronize txns
+              // TODO: async_read ping acknowledgement; handle failures
+              // accordingly Also, use zk_op to do this; to synchronize txns
 
               self->start_ping();
             }));
@@ -657,3 +668,7 @@ class context : public std::enable_shared_from_this<context> {
 };
 
 }  // end namespace zookeeper
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

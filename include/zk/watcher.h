@@ -1,6 +1,7 @@
 #pragma once
 
-#include "consts.h"
+#include <string>
+#include "zk/consts.h"
 
 namespace zookeeper {
 
@@ -12,8 +13,8 @@ struct watch_event {
 
 class watcher {
  public:
-   virtual ~watcher() = default;
-   void process(watch_event e) = 0;
+  virtual ~watcher() = default;
+  virtual void process(watch_event e) = 0;
 };
 
-} // end namespace zookeeper
+}  // end namespace zookeeper

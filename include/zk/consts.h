@@ -1,4 +1,4 @@
-#pragma once 
+#pragma once
 
 #include <cstdint>
 
@@ -12,7 +12,7 @@ enum class event_type : std::int32_t {
   node_children_changed = 4,
   data_watch_removed = 5,
   child_watch_removed = 6,
-}
+};
 
 enum class keeper_state : std::int32_t {
   disconnected = 0,
@@ -20,6 +20,6 @@ enum class keeper_state : std::int32_t {
   auth_failed = 4,
   connected_read_only = 5,
   expired = -112,
-}
+};
 
-} // end namespace zookeeper
+}  // end namespace zookeeper

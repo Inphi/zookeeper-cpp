@@ -1,16 +1,17 @@
 #pragma once
 
-#include <boost/asio/buffer.hpp>
 #include <boost/asio/async_result.hpp>
+#include <boost/asio/buffer.hpp>
 #include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/write.hpp>
 #include <boost/asio/read.hpp>
+#include <boost/asio/write.hpp>
+#include <boost/endian/conversion.hpp>
+#include "error.h"
 #include "owned_buffer.h"
 #include "proto.h"
-#include "error.h"
 
-#include <iostream> // debug
-#include <boost/utility/string_ref.hpp> // debug
+#include <boost/utility/string_ref.hpp>  // debug
+#include <iostream>                      // debug
 
 namespace zookeeper {
 
@@ -81,7 +82,7 @@ struct zk_read_op {
             char b[4];
           } u;
           std::copy_n(b_->data(), 4, u.b);
-          const auto siz = be32toh(u.n);
+          const auto siz = boost::endian::big_to_native(u.n);
           b_->resize(siz);
           state_ = 2;
           trace("zk_read: receive body");

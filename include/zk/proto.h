@@ -1,8 +1,9 @@
 #pragma once
 
-#include "owned_buffer.h"
-#include <cassert>
 #include <boost/asio/buffer.hpp>
+#include <boost/endian/conversion.hpp>
+#include <cassert>
+#include "zk/owned_buffer.h"
 
 namespace zookeeper {
 
@@ -35,21 +36,25 @@ enum class create_mode : std::int32_t {
 auto make_zpayload(const owned_buffer& buf) {
   owned_buffer newbuf{buf.size() + 4};
 
-  const int32_t siz = htobe32(buf.size());
+  const int32_t siz =
+      static_cast<int32_t>(boost::endian::native_to_big(buf.size()));
   newbuf.write(boost::asio::buffer(reinterpret_cast<const char*>(&siz), 4));
   newbuf.write(boost::asio::buffer(buf.data(), buf.size()));
   return newbuf;
 }
 
 owned_buffer read_zkbuffer(const boost::asio::const_buffer& buf) {
-  if (boost::asio::buffer_size(buf) < 4) throw "invalid connect response buffer";
+  if (boost::asio::buffer_size(buf) < 4)
+    throw "invalid connect response buffer";
 
   int32_t encoded_len = *boost::asio::buffer_cast<const int32_t*>(buf);
-  const auto len = be32toh(encoded_len);
-  if (boost::asio::buffer_size(buf + 4) < len) throw "invalid connect response buffer";
+  const auto len = boost::endian::big_to_native(encoded_len);
+  if (boost::asio::buffer_size(buf + 4) < len)
+    throw "invalid connect response buffer";
 
-  owned_buffer b{len};
-  b.write(boost::asio::const_buffer(boost::asio::buffer_cast<const void*>(buf + 4), len));
+  owned_buffer b{static_cast<std::size_t>(len)};
+  b.write(boost::asio::const_buffer(
+      boost::asio::buffer_cast<const void*>(buf + 4), len));
   return b;
 }
 
@@ -60,7 +65,7 @@ std::string deserialize_buffer(boost::asio::const_buffer& buf) {
   }
   int32_t len = *boost::asio::buffer_cast<const int32_t*>(buf);
   buf += 4;
-  len = be32toh(len);
+  len = boost::endian::big_to_native(len);
   if (boost::asio::buffer_size(buf) < static_cast<uint32_t>(len)) {
     throw std::runtime_error("insufficient buffer length for body");
   }
@@ -82,7 +87,7 @@ std::vector<T> deserialize_vector(boost::asio::const_buffer& buf) {
 
   int32_t len = *boost::asio::buffer_cast<const int32_t*>(buf);
   buf += 4;
-  len = be32toh(len);
+  len = boost::endian::big_to_native(len);
   for (int i = 0; i < len; ++i) {
     T t = T::deserialize(buf);
     vec.emplace_back(std::move(t));
@@ -101,13 +106,12 @@ std::vector<char> deserialize_vector(boost::asio::const_buffer& buf) {
 
   int32_t len = *boost::asio::buffer_cast<const int32_t*>(buf);
   buf += 4;
-  len = be32toh(len);
+  len = boost::endian::big_to_native(len);
   vec.resize(len);
   std::copy_n(static_cast<const char*>(buf.data()), len, &vec[0]);
 
   return vec;
 }
-
 
 template <>
 std::vector<std::string> deserialize_vector(boost::asio::const_buffer& buf) {
@@ -119,7 +123,7 @@ std::vector<std::string> deserialize_vector(boost::asio::const_buffer& buf) {
 
   int32_t len = *boost::asio::buffer_cast<const int32_t*>(buf);
   buf += 4;
-  len = be32toh(len);
+  len = boost::endian::big_to_native(len);
   for (int i = 0; i < len; ++i) {
     auto t = deserialize_buffer(buf);
     vec.emplace_back(std::move(t));
@@ -129,12 +133,13 @@ std::vector<std::string> deserialize_vector(boost::asio::const_buffer& buf) {
 }
 
 void serialize(const int32_t& i, owned_buffer& b) {
-  const auto data = htobe32(i);
+  const auto data = boost::endian::native_to_big(i);
   b.write(boost::asio::buffer(reinterpret_cast<const char*>(&data), 4));
 }
 
 void serialize(const std::string& str, owned_buffer& b) {
-  const int32_t siz = htobe32(str.size());
+  const int32_t siz =
+      static_cast<int32_t>(boost::endian::native_to_big(str.size()));
   b.write(boost::asio::buffer(reinterpret_cast<const char*>(&siz), 4));
   b.write(boost::asio::buffer(str.data(), str.size()));
 }
@@ -142,7 +147,8 @@ void serialize(const std::string& str, owned_buffer& b) {
 // Requires: T is Serializable
 template <typename T>
 void serialize(const std::vector<T>& in, owned_buffer& b) {
-  const int32_t siz = htobe32(in.size());
+  const int32_t siz =
+      static_cast<int32_t>(boost::endian::native_to_big(in.size()));
   b.write(boost::asio::buffer(reinterpret_cast<const char*>(&siz), 4));
   for (const auto& i : in) {
     i.serialize(b);
@@ -151,7 +157,8 @@ void serialize(const std::vector<T>& in, owned_buffer& b) {
 
 template <>
 void serialize(const std::vector<char>& in, owned_buffer& b) {
-  const int32_t siz = htobe32(in.size());
+  const int32_t siz =
+      static_cast<int32_t>(boost::endian::native_to_big(in.size()));
   b.write(boost::asio::buffer(reinterpret_cast<const char*>(&siz), 4));
   b.write(boost::asio::buffer(&in[0], in.size()));
 }
@@ -215,15 +222,23 @@ struct acl {
   std::string scheme;
   std::string id;
 
-  static std::vector<acl> open_unsafe() { return {{permission::all, "world", "anyone"}}; }
+  static std::vector<acl> open_unsafe() {
+    return {{permission::all, "world", "anyone"}};
+  }
 
-  static std::vector<acl> creator_all() { return {{permission::all, "auth", ""}}; }
+  static std::vector<acl> creator_all() {
+    return {{permission::all, "auth", ""}};
+  }
 
-  static std::vector<acl> read_unsafe() { return {{permission::read, "world", "anyone"}}; }
+  static std::vector<acl> read_unsafe() {
+    return {{permission::read, "world", "anyone"}};
+  }
 
   void serialize(owned_buffer& b) const {
-    const auto encoded_perms = htobe32(static_cast<int32_t>(perms));
-    b.write(boost::asio::buffer(reinterpret_cast<const char*>(&encoded_perms), 4));
+    const auto encoded_perms =
+        boost::endian::native_to_big(static_cast<int32_t>(perms));
+    b.write(
+        boost::asio::buffer(reinterpret_cast<const char*>(&encoded_perms), 4));
 
     ::zookeeper::serialize(scheme, b);
     ::zookeeper::serialize(id, b);
@@ -232,7 +247,7 @@ struct acl {
   static acl deserialize(boost::asio::const_buffer buf) {
     acl a;
     int32_t data = *boost::asio::buffer_cast<const int32_t*>(buf);
-    a.perms = static_cast<permission>(be32toh(data));
+    a.perms = static_cast<permission>(boost::endian::big_to_native(data));
     buf += 4;
     a.scheme = deserialize_buffer(buf);
     a.id = deserialize_buffer(buf);
@@ -247,8 +262,8 @@ struct request_header {
   void serialize(owned_buffer& b) const {
     b.grow(sizeof(int32_t) + sizeof(int32_t));
 
-    int32_t _xid = htobe32(xid);
-    int32_t _opcode = htobe32(opcode);
+    int32_t _xid = boost::endian::native_to_big(xid);
+    int32_t _opcode = boost::endian::native_to_big(opcode);
     b.write(boost::asio::buffer(reinterpret_cast<char*>(&_xid), 4));
     b.write(boost::asio::buffer(reinterpret_cast<char*>(&_opcode), 4));
   }
@@ -272,12 +287,13 @@ struct create_request {
     // hack for now
     ::zookeeper::serialize(acls, b);
 
-    int32_t flags_be = htobe32(flags);
+    int32_t flags_be = boost::endian::native_to_big(flags);
     b.write(boost::asio::buffer(reinterpret_cast<const char*>(&flags_be), 4));
   }
 
   int32_t size() const {
-    return zsize(path) + zsize(data) + 4 /* hack for acls */ + 4;
+    return static_cast<int32_t>(zsize(path) + zsize(data) +
+                                4 /* hack for acls */ + 4);
   }
 };
 
@@ -343,7 +359,7 @@ struct get_data_response {
   std::vector<char> data;
   stat st;
 
-  // TODO: make stat::deserialize free standing 
+  // TODO: make stat::deserialize free standing
   static auto deserialize(boost::asio::const_buffer& buf) {
     get_data_response response;
     response.data = deserialize_vector<char>(buf);
@@ -356,7 +372,6 @@ struct set_data_request {
   std::string path;
   std::vector<char> data;
   std::int32_t version;
-
 
   void serialize(owned_buffer& b) const {
     ::zookeeper::serialize(path, b);
@@ -429,7 +444,7 @@ auto make_payload(op_code opcode, T&& t) {
   payload.serialize(b);
 
   len = b.data() + b.size() - begin - 4;
-  const auto encoded_len = htobe32(len);
+  const auto encoded_len = boost::endian::native_to_big(len);
   std::copy_n(reinterpret_cast<const char*>(&encoded_len), 4, begin);
   return b;
 }
@@ -454,13 +469,13 @@ struct connect_request {
     const auto siz = sizeof(int32_t) + sizeof(int64_t) + sizeof(int32_t) +
                      sizeof(int64_t) + passwd.size() + 1;
 
-    const auto pv = htobe32(protocol_version);
-    const auto lz = htobe64(last_zxid);
-    const auto t = htobe32(timeout);
-    const auto sid = htobe64(session_id);
+    const auto pv = boost::endian::native_to_big(protocol_version);
+    const auto lz = boost::endian::native_to_big(last_zxid);
+    const auto t = boost::endian::native_to_big(timeout);
+    const auto sid = boost::endian::native_to_big(session_id);
     const uint8_t read_only_s = read_only;
 
-    const auto passwdlen = htobe32(passwd.size());
+    const auto passwdlen = boost::endian::native_to_big(passwd.size());
 
     b.grow(siz);
     b.write(boost::asio::buffer(reinterpret_cast<const char*>(&pv), 4));
@@ -481,7 +496,8 @@ struct connect_response {
   bool read_only;
 
   static connect_response deserialize(const boost::asio::const_buffer& buf) {
-    if (boost::asio::buffer_size(buf) < 16) throw "invalid connect response buffer";
+    if (boost::asio::buffer_size(buf) < 16)
+      throw "invalid connect response buffer";
 
     int32_t protocol_version = *boost::asio::buffer_cast<const int32_t*>(buf);
     int32_t timeout = *boost::asio::buffer_cast<const int32_t*>(buf + 4);
@@ -490,9 +506,9 @@ struct connect_response {
     assert(passwd.size() == 16);
 
     connect_response c;
-    c.protocol_version = be32toh(protocol_version);
-    c.timeout = be32toh(timeout);
-    c.session_id = be64toh(session_id);
+    c.protocol_version = boost::endian::big_to_native(protocol_version);
+    c.timeout = boost::endian::big_to_native(timeout);
+    c.session_id = boost::endian::big_to_native(session_id);
     c.passwd = std::move(passwd);
     return c;
   }
@@ -521,9 +537,9 @@ struct reply_header {
     buf += 4;
 
     reply_header rh;
-    rh.xid = be32toh(xid);
-    rh.zxid = be64toh(zxid);
-    rh.err = be32toh(err);
+    rh.xid = boost::endian::big_to_native(xid);
+    rh.zxid = boost::endian::big_to_native(zxid);
+    rh.err = boost::endian::big_to_native(err);
     return rh;
   }
 
@@ -545,8 +561,8 @@ struct ping_request {
     b.write(boost::asio::buffer(reinterpret_cast<const char*>(&len), 4));
 
     hdr.serialize(b);
-    len = b.data() + b.size() - begin - 4;
-    const auto encoded_len = htobe32(len);
+    len = static_cast<int32_t>(b.data() + b.size() - begin - 4);
+    const auto encoded_len = boost::endian::native_to_big(len);
     std::copy_n(reinterpret_cast<const char*>(&encoded_len), 4, begin);
   }
 
@@ -556,4 +572,4 @@ struct ping_request {
   }
 };
 
-} // end namespace zookeeper
+}  // end namespace zookeeper

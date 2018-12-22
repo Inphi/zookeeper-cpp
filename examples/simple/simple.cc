@@ -1,12 +1,13 @@
-#include <thread>
-#include <boost/asio/io_service.hpp>
-#include <boost/asio/executor_work_guard.hpp>
-#include <boost/asio/use_future.hpp>
 #include <boost/asio/spawn.hpp>
+#include <boost/asio/use_future.hpp>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
-#include <functional>
+#include <thread>
+#include "boost/asio/executor_work_guard.hpp"
+#include "boost/asio/io_context.hpp"
+
 #include "zk/context.h"
 
 int main(int ac, char** av) {
@@ -62,7 +63,7 @@ int main(int ac, char** av) {
     auto cresult = ctx->get_children("/", false, yield);
     if (!cresult.is_ok()) {
       std::cerr << "err: " << cresult.err().message() << std::endl;
-      } else {
+    } else {
       std::cerr << "get children success\n";
     }
     if (cresult.is_ok()) {
@@ -78,7 +79,7 @@ int main(int ac, char** av) {
     else
       std::cerr << "path exists\n";
 
-    auto data_result =  ctx->get_data("/foo", false, yield);
+    auto data_result = ctx->get_data("/foo", false, yield);
     if (data_result.is_ok()) {
       auto& data = data_result.ok().first;
       const std::string str{data.begin(), data.end()};
@@ -98,7 +99,6 @@ int main(int ac, char** av) {
     assert(bad_result.err() == zookeeper::error::bad_arguments);
   });
 
-  
   auto g = asio::executor_work_guard<asio::io_context::executor_type>{
       ios.get_executor()};
 
