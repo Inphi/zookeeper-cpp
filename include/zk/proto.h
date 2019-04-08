@@ -49,7 +49,7 @@ owned_buffer read_zkbuffer(const boost::asio::const_buffer& buf) {
 
   int32_t encoded_len = *boost::asio::buffer_cast<const int32_t*>(buf);
   const auto len = boost::endian::big_to_native(encoded_len);
-  if (boost::asio::buffer_size(buf + 4) < len)
+  if (boost::asio::buffer_size(buf + 4) < static_cast<std::size_t>(len))
     throw "invalid connect response buffer";
 
   owned_buffer b{static_cast<std::size_t>(len)};

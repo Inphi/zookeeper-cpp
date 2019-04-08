@@ -2,6 +2,7 @@
 
 #include <boost/asio/error.hpp>
 #include <boost/utility/string_ref.hpp>
+#include <cinttypes>
 #include <iostream>
 #include <system_error>
 #include "zk/proto.h"
@@ -24,7 +25,7 @@ void trace(const connect_response& response) {
 #ifdef ZK_LOGGING
   std::cerr << "ver: " << response.protocol_version << '\n';
   std::cerr << "timeout: " << response.timeout << '\n';
-  fprintf(stderr, "session_id: 0x%lldx\n", response.session_id);
+  fprintf(stderr, "session_id: 0x%" PRIx64 "\n", response.session_id);
   std::cerr << "read_only: " << response.read_only << '\n';
 #endif
 }
